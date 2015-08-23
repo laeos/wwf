@@ -290,6 +290,19 @@ class Anchor(object):
 	self.col = col
 	self.a = a
 
+    def __eq__(self, other):
+	if type(other) is type(self):
+	    return  (self.row == other.row) and (self.col == other.col) and (self.a == other.a)
+	return False
+
+    def __ne__(self, other):
+	return not self.__eq__(other)
+
+    def direction(self):
+	if self.a:
+	    return "v"
+	return "h"
+
     def add(self, pos):
 	n = Anchor(self.row, self.col)
 	n.a = self.a
@@ -303,6 +316,31 @@ class Anchor(object):
 	return "<Anchor r:" + str(self.row) + " c:" + str(self.col) + " a:" + str(self.a) + ">"
 
 
+class Solution(object):
+    def __init__(self, start, word, score, played):
+	self.start = start
+	self.word = word
+	self.score = score
+	self.played = played
+
+    def __eq__(self, other):
+	if type(other) is type(self):
+	    return (self.start == other.start) and (self.word == other.word)
+	return False
+
+    def __ne__(self, other):
+	return not self.__eq__(other)
+
+    def __hash__(self):
+	return str(self).__hash__()
+
+    def __str__(self):
+	s = "<PLAY: @"
+	s += str(self.start.row) + "," + str(self.start.col) + " ";
+	s += self.start.direction() + " "
+	s += self.word + " " + str(self.score) + ">"
+	return s
+
 class Solver(object):
     def __init__(self, board, gaddag):
 	self.board = board
@@ -310,7 +348,7 @@ class Solver(object):
 	self.anchor = None
 	self.rows = board.rows()
 	self.cols = board.cols()
-	self.plays = []
+	self.plays = set()
 
     def is_valid_address(self, row, col):
 	if (row < 0) or (col < 0) or (row >= self.rows) or (col >= self.cols):
@@ -339,21 +377,15 @@ class Solver(object):
 	return anchors
 
     def print_play(self, play):
-	print "PLAY:", play[0], play[1], play[2], play[3], "score:", play[4]
-
-	if play[1] > 0:
-	    n = play[0].add(play[1] - len(play[2]) + 1)
-	else:
-	    n = play[0].add(play[1])
-
-	board.pretty_print_word(n, play[2].upper())
+	print play
+	board.pretty_print_word(play.start, play.word.upper())
 
     def solve(self):
 	anchors = self.get_anchors()
-	self.plays = []
+	self.plays = set()
 	for self.anchor in anchors:
 	    self.gen(0, "", board.rack, [0], [], gaddag.initialArc)
-	for p in sorted(self.plays, key=lambda o: o[4]):
+	for p in sorted(self.plays, key=lambda o: o.score):
 	    self.print_play(p)
 
     def get_letter(self, a):
@@ -408,14 +440,28 @@ class Solver(object):
 	    score[0] *= i
 	return calculated_score + sum(score)
 
-    # record word at anchor
-    def record_play(self, pos, word, remaining_rack, score, multipliers):
+    def played_tiles(self, remaining_rack):
 	played = board.rack[:]
 	s = ""
 	for i in remaining_rack: played.remove(i)
 	for i in played: s += i
-	p = [self.anchor, pos, word, s, self.calculate_score(remaining_rack, score, multipliers)]
-	self.plays.append(p)
+	return s
+
+    def word_start(self, pos, word):
+	if pos > 0:
+	    n = self.anchor.add(pos - len(word) + 1)
+	else:
+	    n = self.anchor.add(pos)
+	return n
+
+    # record word at anchor
+    def record_play(self, pos, word, remaining_rack, score, multipliers):
+	sc = self.calculate_score(remaining_rack, score, multipliers)
+	ws = self.word_start(pos, word)
+	pt = self.played_tiles(remaining_rack)
+
+	play = Solution(ws, word, sc, pt)
+	self.plays.add(play)
 
     # is there an empty square here [anchor + pos] ?
     def is_empty_at(self, pos):
