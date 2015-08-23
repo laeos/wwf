@@ -105,8 +105,6 @@ class GADDAG(object):
     def add_word(self, word):
 	if len(word) < 2:
 	    return
-	if len(word) > 8:
-	    return
 
 	self.count += 1
 	if (self.count % 5000) == 0:
