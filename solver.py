@@ -502,7 +502,7 @@ gaddag = None
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-d", default="words", help="word list", required=False)
-parser.add_argument("-b", default="board", help="board", required=False)
+parser.add_argument("board", help="board")
 parser.add_argument("-W", help="dump GADDAG as dot graph", required=False)
 args = parser.parse_args()
 
@@ -511,7 +511,7 @@ if args.W:
     gaddag.dump(args.W)
     sys.exit(0)
 
-board = Board(args.b)
+board = Board(args.board)
 
 n = Solver(board, gaddag)
 n.solve()
