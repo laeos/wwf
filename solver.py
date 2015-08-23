@@ -193,10 +193,40 @@ class GADDAG(object):
 	    return self.all_letters
 
 class Board(object):
+    multipliers = [ '---t--T-T--t---',
+		    '--D--d---d--D--',
+		    '-D--D-----D--D-',
+		    't--T---d---T--t',
+		    '--D---D-D---D--',
+		    '-d---T---T---d-',
+		    'T---D-----D---T',
+		    '---d-------d---',
+		    'T---D-----D---T',
+		    '-d---T---T---d-',
+		    '--D---D-D---D--',
+		    't--T---d---T--t',
+		    '-D--D-----D--D-',
+		    '--D--d---d--D--',
+		    '---t--T-T--t---' ]
+
+    def add_points(self, pt, s):
+	for i in s:
+	    self.letter_points[i] = pt
+
     def __init__(self, fname):
 	self.rack = set()
 	self.board = []
 	self.load(fname)
+	self.letter_points = {}
+
+	self.add_points(0, "*")
+	self.add_points(1, "srtioae")
+	self.add_points(2, "ludn")
+	self.add_points(3, "ygh")
+	self.add_points(4, "bcfmpw")
+	self.add_points(5, "kv")
+	self.add_points(8, "x")
+	self.add_points(10, "jqz")
 
     def parse_rack(self, line):
 	self.rack = list(line.lower())
@@ -241,6 +271,18 @@ class Board(object):
 	x = copy.deepcopy(self)
 	x.patch(a, word)
 	x.pretty_print()
+
+    def word_multiplier_at(self, row, col):
+	m = self.multipliers[row][col]
+	if m == 'd': return 2
+	if m == 't': return 3
+	return 1
+
+    def letter_multiplier_at(self, row, col):
+	m = self.multipliers[row][col]
+	if m == 'D': return 2
+	if m == 'T': return 3
+	return 1
 
 class Anchor(object):
     def __init__(self, row, col, a=0):
@@ -297,7 +339,7 @@ class Solver(object):
 	return anchors
 
     def print_play(self, play):
-	print "PLAY:", play[0], play[1], play[2], play[3]
+	print "PLAY:", play[0], play[1], play[2], play[3], "score:", play[4]
 
 	if play[1] > 0:
 	    n = play[0].add(play[1] - len(play[2]) + 1)
@@ -310,8 +352,8 @@ class Solver(object):
 	anchors = self.get_anchors()
 	self.plays = []
 	for self.anchor in anchors:
-	    self.gen(0, "", board.rack, gaddag.initialArc)
-	for p in sorted(self.plays, key=lambda o: len(o[2])):
+	    self.gen(0, "", board.rack, [0], [], gaddag.initialArc)
+	for p in sorted(self.plays, key=lambda o: o[4]):
 	    self.print_play(p)
 
     def get_letter(self, a):
@@ -326,43 +368,53 @@ class Solver(object):
     def get_square_letter(self, pos):
 	return self.get_letter(self.abs_position(self.anchor, pos))
 
-    def slurp_direction(self, start, pos, direction, s=""):
+    def slurp_direction(self, start, pos, direction, s="", score=0):
 	pos += direction
 
 	n = self.abs_position(start, pos)
 	if n == None:
-	    return s
+	    return score, s
 	L = self.get_letter(n)
 	if L == None:
-	    return s
+	    return score, s
 	if direction > 0:
 	    s += L
 	else:
 	    s = L + s
-	return self.slurp_direction(start, pos, direction, s)
+	score += self.get_letter_points(L)
+	return self.slurp_direction(start, pos, direction, s, score)
 
-    # anchor + pos, return cross-set
+    # anchor + pos, return partial score, cross-set
     def get_square_cross_set(self, pos):
 	start = self.abs_position(self.anchor, pos)
 	start.a ^= 1
 
-	left = self.slurp_direction(start, 0, -1)
-	right = self.slurp_direction(start, 0, 1)
+	left_score, left = self.slurp_direction(start, 0, -1)
+	right_score, right = self.slurp_direction(start, 0, 1)
 
 	ss = gaddag.cross_set(left, right)
 
 	# if len(left) or len(right):
 	#    print start, "left '" + left + "' right '" + right + "' :", ss
 
-	return ss
+	return (left_score + right_score), ss
+
+    def calculate_score(self, remaining_rack, score, multipliers):
+	calculated_score = 0
+	if len(remaining_rack) == 0:
+	    calculated_score += 35
+
+	for i in sorted(multipliers, reverse=True):
+	    score[0] *= i
+	return calculated_score + sum(score)
 
     # record word at anchor
-    def record_play(self, pos, word, remaining_rack):
+    def record_play(self, pos, word, remaining_rack, score, multipliers):
 	played = board.rack[:]
 	s = ""
 	for i in remaining_rack: played.remove(i)
 	for i in played: s += i
-	p = [self.anchor, pos, word, s]
+	p = [self.anchor, pos, word, s, self.calculate_score(remaining_rack, score, multipliers)]
 	self.plays.append(p)
 
     # is there an empty square here [anchor + pos] ?
@@ -379,13 +431,26 @@ class Solver(object):
     def can_i_go(self, pos):
 	return self.abs_position(self.anchor, pos)
 
-    def gen(self, pos, word, rack, arc):
-	# print "GE", self.anchor, pos, word, rack
+    # points for given letter
+    def get_letter_points(self, L):
+	return self.board.letter_points[L]
+
+    def get_letter_multiplier(self, pos):
+	n = self.abs_position(self.anchor, pos)
+	return self.board.letter_multiplier_at(n.row, n.col)
+
+    def get_word_multiplier(self, pos):
+	n = self.abs_position(self.anchor, pos)
+	return self.board.word_multiplier_at(n.row, n.col)
+
+    def gen(self, pos, word, rack, score, multipliers, arc):
+	# print "GE", self.anchor, pos, word, rack, score
 	L = self.get_square_letter(pos)
 	if L != None:
-	    self.goon(pos, L, word, rack, arc.next_arc(L), arc)
+	    score[0] += self.get_letter_points(L)
+	    self.goon(pos, L, word, rack, score, multipliers, arc.next_arc(L), arc)
 	elif len(rack):
-	    cross_set = self.get_square_cross_set(pos)
+	    partial, cross_set = self.get_square_cross_set(pos)
 	    tried_set = set()
 
 	    for index in range(0, len(rack)):
@@ -393,33 +458,44 @@ class Solver(object):
 		L = new_rack[index]
 		del new_rack[index]
 
+		new_score = score[:]
+		new_multipliers = multipliers[:]
+
+		letter_score = self.get_letter_points(L) * self.get_letter_multiplier(pos)
+		mult = self.get_word_multiplier(pos)
+
+		new_score[0] += letter_score
+		new_multipliers.append(mult)
+		if partial > 0:
+		    new_score.append(mult * (partial + letter_score))
+
 		if L == '*':
 		    for L in (cross_set.difference(tried_set)):
-			self.goon(pos, L, word, new_rack, arc.next_arc(L), arc)
+			self.goon(pos, L, word, new_rack, new_score, new_multipliers, arc.next_arc(L), arc)
 			tried_set.add(L)
 		elif L in cross_set and L not in tried_set:
-		    self.goon(pos, L, word, new_rack, arc.next_arc(L), arc)
+		    self.goon(pos, L, word, new_rack, new_score, new_multipliers, arc.next_arc(L), arc)
 		    tried_set.add(L)
 
 
-    def goon(self, pos, L, word, rack, new_arc, old_arc):
-	# print "GO", pos, L, word, rack, new_arc, old_arc
+    def goon(self, pos, L, word, rack, score, multipliers, new_arc, old_arc):
+	# print "GO", pos, L, word, rack, new_arc, old_arc, score
 	if pos <= 0:
 	    word = L + word
 	    if old_arc.has_letter(L) and self.does_terminate(pos - 1) and self.is_empty_at(1):
-		self.record_play(pos, word, rack)
+		self.record_play(pos, word, rack, score, multipliers)
 	    if new_arc:
 		if self.can_i_go(pos - 1):
-		    self.gen(pos - 1, word, rack, new_arc)
+		    self.gen(pos - 1, word, rack, score, multipliers, new_arc)
 		new_arc = new_arc.next_arc('$')
 		if new_arc and self.does_terminate(pos - 1) and self.can_i_go(1):
-		    self.gen(1, word, rack, new_arc)
+		    self.gen(1, word, rack, score, multipliers, new_arc)
 	else:
 	    word = word + L
 	    if old_arc.has_letter(L) and self.does_terminate(pos + 1):
-		self.record_play(pos, word, rack)
+		self.record_play(pos, word, rack, score, multipliers)
 	    if new_arc and self.can_i_go(pos + 1):
-		self.gen(pos + 1, word, rack, new_arc)
+		self.gen(pos + 1, word, rack, score, multipliers, new_arc)
 
 board = None
 gaddag = None
