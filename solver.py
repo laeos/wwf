@@ -433,12 +433,13 @@ class Solver(object):
 
     def calculate_score(self, remaining_rack, score, multipliers):
 	calculated_score = 0
+	my_score = score[:]
 	if len(remaining_rack) == 0:
 	    calculated_score += 35
 
 	for i in sorted(multipliers, reverse=True):
-	    score[0] *= i
-	return calculated_score + sum(score)
+	    my_score[0] *= i
+	return calculated_score + sum(my_score)
 
     def played_tiles(self, remaining_rack):
 	played = board.rack[:]
