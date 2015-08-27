@@ -247,6 +247,10 @@ class Board(object):
     def cols(self):
 	return len(self.board[0])
 
+    # for now, just hard-coded for the game i'm playing
+    def full_rack_size(self):
+        return 7
+
     def get_letter(self, row, col):
 	L = self.board[row][col];
 	if L == '-':
@@ -427,14 +431,14 @@ class Solver(object):
 	ss = gaddag.cross_set(left, right)
 
 	# if len(left) or len(right):
-	#    print start, "left '" + left + "' right '" + right + "' :", ss
+	#    print start, "left[" + str(left_score) + "] '" + left + "' right[" + str(right_score) + "] '" + right + "' :", ss
 
 	return (left_score + right_score), ss
 
-    def calculate_score(self, remaining_rack, score, multipliers):
+    def calculate_score(self, played_full_rack, score, multipliers):
 	calculated_score = 0
 	my_score = score[:]
-	if len(remaining_rack) == 0:
+        if played_full_rack:
 	    calculated_score += 35
 
 	for i in sorted(multipliers, reverse=True):
@@ -457,12 +461,15 @@ class Solver(object):
 
     # record word at anchor
     def record_play(self, pos, word, remaining_rack, score, multipliers):
-	sc = self.calculate_score(remaining_rack, score, multipliers)
 	ws = self.word_start(pos, word)
 	pt = self.played_tiles(remaining_rack)
 
+        played_full_rack = len(pt) == self.board.full_rack_size()
+	sc = self.calculate_score(played_full_rack, score, multipliers)
+
 	play = Solution(ws, word, sc, pt)
 	self.plays.add(play)
+        # self.print_play(play)
 
     # is there an empty square here [anchor + pos] ?
     def is_empty_at(self, pos):
