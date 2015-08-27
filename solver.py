@@ -378,6 +378,8 @@ class Solver(object):
 		    if ok:
 			anchors.append(Anchor(row, col, 0))
 			anchors.append(Anchor(row, col, 1))
+        if len(anchors) == 0:
+            anchors.append(Anchor(board.rows() / 2, board.cols() / 2))
 	return anchors
 
     def print_play(self, play):
