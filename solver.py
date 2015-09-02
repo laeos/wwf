@@ -527,7 +527,7 @@ class Solver(object):
 
 		if L == '*':
 		    for L in (cross_set.difference(tried_set)):
-			self.goon(pos, L, word, new_rack, new_score, new_multipliers, arc.next_arc(L), arc)
+                        self.goon(pos, L, word, new_rack, new_score[:], new_multipliers, arc.next_arc(L), arc)
 			tried_set.add(L)
 		elif L in cross_set and L not in tried_set:
 		    self.goon(pos, L, word, new_rack, new_score, new_multipliers, arc.next_arc(L), arc)
